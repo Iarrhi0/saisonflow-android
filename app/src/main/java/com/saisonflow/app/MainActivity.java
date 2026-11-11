@@ -140,19 +140,7 @@ public final class MainActivity extends Activity {
         body.addView(matches);
         try (InputStream in = getAssets().open("animes.json")) {
             org.json.JSONArray titles = new org.json.JSONArray(readText(in));
-            Runnable filter = () -> {
-                matches.removeAllViews();
-                String query = search.getText().toString().trim().toLowerCase(Locale.ROOT);
-                for (int i = 0; i < titles.length(); i++) {
-                    org.json.JSONObject item = titles.optJSONObject(i);
-                    String title = item.optString("title");
-                    if (title.toLowerCase(Locale.ROOT).contains(query)) {
-                        matches.addView(button(title, () -> openSource(item.optString("url"))));
-                    }
-                    if (query.isEmpty() && matches.getChildCount() == 6) break;
-                }
-                if (matches.getChildCount() == 0) matches.addView(text("Aucun titre correspondant", 14, SECONDARY, false));
-            };
+            Runnable filter = () -> searchCatalogues(search, matches, titles);
             search.addTextChangedListener(new android.text.TextWatcher() {
                 public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
                 public void onTextChanged(CharSequence s, int start, int before, int count) { filter.run(); }
@@ -169,6 +157,86 @@ public final class MainActivity extends Activity {
         addButton("French Stream", () -> openSource("https://fss.lol/"));
         addButton("MovieBox", () -> openSource("https://officialmoviebox.com/"));
         addButton("Hanime · 18+", () -> openSource("https://hanime.tv/"));
+    }
+
+    private final java.util.concurrent.ExecutorService searches = java.util.concurrent.Executors.newFixedThreadPool(3);
+    private final android.os.Handler debounce = new android.os.Handler(android.os.Looper.getMainLooper());
+    private int searchVersion;
+
+    private void searchCatalogues(EditText field, LinearLayout list, org.json.JSONArray titles) {
+        int version = ++searchVersion;
+        debounce.removeCallbacksAndMessages(null);
+        list.removeAllViews();
+        String query = field.getText().toString().trim().toLowerCase(Locale.ROOT);
+        java.util.Map<String, LinearLayout> groups = new java.util.LinkedHashMap<>();
+        for (int i = 0; i < titles.length(); i++) {
+            org.json.JSONObject hit = titles.optJSONObject(i);
+            String title = hit.optString("title");
+            if (title.toLowerCase(Locale.ROOT).contains(query))
+                addHit(list, groups, title, "Miruro", hit.optString("url"));
+            if (query.isEmpty() && groups.size() == 6) break;
+        }
+        if (query.length() < 2) return;
+        debounce.postDelayed(() -> {
+            for (String provider : new String[]{"French Stream", "Internet Archive"}) {
+                searches.execute(() -> {
+                    java.util.Map<String,String> hits = new java.util.LinkedHashMap<>();
+                    String failure = null;
+                    try {
+                        if (provider.equals("French Stream")) {
+                            try (java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.InputStreamReader(
+                                    new java.util.zip.GZIPInputStream(getAssets().open("french-stream.tsv.gz")), StandardCharsets.UTF_8))) {
+                                String path;
+                                while ((path = reader.readLine()) != null && hits.size() < 40) {
+                                    String title = path.substring(path.indexOf((char)45)+1, path.length()-5).replace((char)45,(char)32);
+                                    if (title.contains(query)) hits.put(title, "https://fss.lol/" + path);
+                                }
+                            }
+                        } else {
+                            String safe = query.replaceAll("[^\\p{L}\\p{N} ]", " ").trim();
+                            if (safe.isEmpty()) return;
+                            String term = "mediatype:movies AND title:\"" + safe + "\"";
+                            java.net.URL url = new java.net.URL("https://archive.org/advancedsearch.php?q=" +
+                                    Uri.encode(term) + "&fl[]=identifier&fl[]=title&rows=20&output=json");
+                            java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
+                            conn.setConnectTimeout(6000); conn.setReadTimeout(8000);
+                            try (InputStream in = conn.getInputStream()) {
+                                org.json.JSONArray docs = new org.json.JSONObject(readText(in)).getJSONObject("response").getJSONArray("docs");
+                                for (int i=0; i<docs.length(); i++) {
+                                    org.json.JSONObject doc = docs.getJSONObject(i);
+                                    hits.put(doc.getString("title"), "https://archive.org/details/" + Uri.encode(doc.getString("identifier")));
+                                }
+                            } finally { conn.disconnect(); }
+                        }
+                    } catch (Exception e) { failure = provider + " indisponible"; }
+                    String error = failure;
+                    runOnUiThread(() -> {
+                        if (version != searchVersion || !list.isAttachedToWindow()) return;
+                        for (Map.Entry<String,String> hit : hits.entrySet())
+                            addHit(list, groups, hit.getKey(), provider, hit.getValue());
+                        if (error != null || hits.isEmpty()) list.addView(text(error != null ? error : provider + " · aucun résultat", 13, SECONDARY, false));
+                    });
+                });
+            }
+        }, 350);
+    }
+
+    private void addHit(LinearLayout list, Map<String,LinearLayout> groups, String title, String provider, String url) {
+        String key = title.trim().toLowerCase(Locale.ROOT);
+        LinearLayout group = groups.get(key);
+        if (group == null) {
+            group = card();
+            group.addView(text(title, 17, FG, true));
+            groups.put(key, group);
+            list.addView(group);
+        }
+        group.addView(button(provider, () -> openSource(url)));
+    }
+
+    @Override protected void onDestroy() {
+        debounce.removeCallbacksAndMessages(null);
+        searches.shutdownNow();
+        super.onDestroy();
     }
 
     @android.annotation.SuppressLint("SetJavaScriptEnabled")
