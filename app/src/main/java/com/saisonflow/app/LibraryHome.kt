@@ -30,7 +30,7 @@ private val navy = Color(0xff0b101d)
 private val panel = Color(0xff1b2538)
 private val orange = Color(0xffff851c)
 private const val collection = "Cinéma Blender"
-private data class Title(val name: String, val catalog: String, val demo: Boolean = false)
+internal data class Title(val name: String, val catalog: String, val demo: Boolean = false, val id: Int = 0, val info: String = "")
 
 class LibraryHome : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -82,6 +82,16 @@ class LibraryHome : ComponentActivity() {
                         } else {
                             OutlinedTextField(query, { query = it; tab = "Recherche" }, singleLine = true,
                                 placeholder = { Text("Rechercher un animé") }, modifier = Modifier.fillMaxWidth())
+                            var remoteError by remember { mutableStateOf(false) }
+                            val remote by produceState<List<Title>>(emptyList(),query) {
+                                value = emptyList(); remoteError = false
+                                if (query.trim().length >= 2) {
+                                    delay(400)
+                                    try { value = withContext(Dispatchers.IO) { TvMaze.search(query.trim()) } }
+                                    catch (e: java.io.IOException) { remoteError = true }
+                                    catch (e: org.json.JSONException) { remoteError = true }
+                                }
+                            }
                             val results by produceState<List<Title>>(emptyList(), query, catalog) {
                                 value = withContext(Dispatchers.Default) {
                                     val term = query.trim()
@@ -91,14 +101,16 @@ class LibraryHome : ComponentActivity() {
                                 }
                             }
                             Text(if (query.isBlank()) "À découvrir" else "Résultats", style = MaterialTheme.typography.titleLarge)
+                            val display = remote + results.filter { local -> remote.none { it.name.equals(local.name,true) } }
+                            if (remoteError) Text("TVmaze indisponible · index local affiché")
                             if (catalog.isEmpty()) CircularProgressIndicator()
-                            else if (results.isEmpty()) Text("Aucun résultat pour cette recherche.")
+                            else if (display.isEmpty()) Text("Aucun résultat pour cette recherche.")
                             LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                items(results) { item ->
+                                items(display) { item ->
                                     Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).clickable {
                                         startActivity(Intent(this@LibraryHome, OfferActivity::class.java)
                                             .putExtra("title",item.name).putExtra("provider",item.catalog)
-                                            .putExtra("demo",item.demo).putExtra("poster",MainActivity.cover(item.name)))
+                                            .putExtra("tvmaze",item.id).putExtra("demo",item.demo).putExtra("poster",MainActivity.cover(item.name)))
                                     }, verticalAlignment = Alignment.CenterVertically) {
                                         Surface(color = panel, modifier = Modifier.fillMaxWidth()) {
                                             Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -106,6 +118,7 @@ class LibraryHome : ComponentActivity() {
                                                 if (poster != 0) Image(painterResource(poster), null, Modifier.size(85.dp,115.dp).clip(RoundedCornerShape(8.dp)), contentScale = ContentScale.Crop)
                                                 Column(Modifier.padding(start = 12.dp)) {
                                                     Text(item.name, style = MaterialTheme.typography.titleLarge)
+                                                    if (item.info.isNotBlank()) Text(item.info)
                                                     Text(item.catalog, color = orange)
                                                 }
                                             }

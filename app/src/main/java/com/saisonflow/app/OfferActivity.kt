@@ -36,7 +36,12 @@ class OfferActivity : ComponentActivity() {
                 var message by rememberSaveable { mutableStateOf("") }
                 var queued by rememberSaveable(season) { mutableStateOf(intArrayOf()) }
                 LaunchedEffect(title) {
-                    seasons = withContext(Dispatchers.IO) { MediaCatalogs(this@OfferActivity).seasons(title) }
+                    seasons = withContext(Dispatchers.IO) {
+                        val known = MediaCatalogs(this@OfferActivity).seasons(title)
+                        val id = intent.getIntExtra("tvmaze",0)
+                        val metadata = if (id > 0) runCatching { TvMaze.seasons(id) }.getOrDefault(emptyMap()) else emptyMap()
+                        (metadata.keys + known.keys).sorted().associateWith { metadata[it].orEmpty() + known[it].orEmpty() }
+                    }
                     if (season !in seasons) season = seasons.keys.firstOrNull() ?: 0
                 }
                 LaunchedEffect(seasons,season) {
@@ -63,6 +68,8 @@ class OfferActivity : ComponentActivity() {
                             verified.forEach { Text(it.title) }
                             Button(onClick = { sheet = true }, enabled = verified.any { it.number !in queued }) { Text("Télécharger") }
                         }
+                        val missing = seasons[season].orEmpty().distinctBy { it.number }.filter { ep -> verified.none { it.number == ep.number } }
+                        missing.forEach { ep -> Text("E${ep.number} · ${ep.title} · indisponible") }
                         if (message.isNotEmpty()) Text(message)
                     }
                 }
