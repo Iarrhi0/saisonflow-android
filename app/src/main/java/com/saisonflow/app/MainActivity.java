@@ -98,9 +98,9 @@ public final class MainActivity extends Activity {
         outer.setPadding(dp(12), dp(15), dp(12), dp(8));
         outer.setBackgroundColor(BG);
         TextView brand = text("  SaisonFlow", 31, FG, true);
-        android.text.SpannableString name = new android.text.SpannableString(brand.getText());
-        name.setSpan(new android.text.style.ForegroundColorSpan(ACCENT), 8, name.length(), 0);
-        brand.setText(name);
+        android.text.SpannableString wordmark = new android.text.SpannableString(brand.getText());
+        wordmark.setSpan(new android.text.style.ForegroundColorSpan(ACCENT), 8, wordmark.length(), 0);
+        brand.setText(wordmark);
         brand.setGravity(Gravity.CENTER);
         android.graphics.drawable.Drawable mark = getDrawable(R.drawable.flow_mark);
         mark.setBounds(0, 0, dp(36), dp(36));
