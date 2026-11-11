@@ -162,7 +162,7 @@ public final class MainActivity extends Activity {
                 public void afterTextChanged(android.text.Editable s) {}
             });
             filter.run();
-            addButton("Tous les animés Miruro", () -> openSource("https://www.miruro.tv/trending"));
+
         } catch (Exception e) { addNote("Index local indisponible"); }
         addHeading("Catalogues");
         addButton("FRAnime", () -> openSource("https://franime.fr/"));
@@ -184,6 +184,9 @@ public final class MainActivity extends Activity {
         list.removeAllViews();
         String query = field.getText().toString().trim().toLowerCase(Locale.ROOT);
         java.util.Map<String, LinearLayout> groups = new java.util.LinkedHashMap<>();
+        if (query.isEmpty() || "bandes-annonces blender big buck bunny sintel".contains(query))
+            list.addView(button("Bandes-annonces Blender · Démonstration", () ->
+                showDetails("Bandes-annonces Blender", "Blender Foundation · W3C", true)));
         for (int i = 0; i < titles.length(); i++) {
             org.json.JSONObject hit = titles.optJSONObject(i);
             String title = hit.optString("title");
@@ -261,7 +264,13 @@ public final class MainActivity extends Activity {
             groups.put(key, group);
 
         }
-        group.addView(button(provider, () -> openSource(url)));
+        group.addView(button(provider, () -> showDetails(title, provider, false)));
+    }
+
+    private void showDetails(String title, String provider, boolean demo) {
+        startActivity(new Intent(this, OfferActivity.class).putExtra("title", title)
+            .putExtra("provider",provider).putExtra("demo",demo).putExtra("wifi",wifiOnly)
+            .putExtra("poster",cover(title)));
     }
 
     @Override protected void onDestroy() {
@@ -408,15 +417,12 @@ public final class MainActivity extends Activity {
         body.addView(url);
         EditText title = edit(linkTitle, "Nom de la vidéo (facultatif)", false);
         body.addView(title);
-        addNote("Qualité réelle du lien (étiquette de classement, pas conversion)");
-        Spinner quality = qualitySpinner();
-        body.addView(quality);
         addButton("Télécharger cette vidéo", () -> {
             linkUrl = url.getText().toString().trim();
             linkTitle = title.getText().toString().trim();
             if (linkTitle.isEmpty()) linkTitle = "Ma vidéo";
             try {
-                engine.enqueue(linkUrl, linkTitle, wantedQuality, wifiOnly);
+                engine.enqueue(linkUrl, linkTitle, "original", wifiOnly);
                 toast("Ajouté aux téléchargements");
                 tab = "Téléchargés"; render();
             } catch(Exception ex) { alert("Lien non pris en charge", ex.getMessage()); }
