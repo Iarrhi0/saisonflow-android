@@ -132,7 +132,7 @@ public final class MainActivity extends Activity {
 
     private void renderCatalogue() {
         addHeading("Séries et saisons");
-        addNote("Films inclus : Big Buck Bunny © Blender Foundation (peach.blender.org) et Sintel © Blender Foundation (sintel.org), sous licence Creative Commons Attribution 3.0.");
+        addNote("Bandes-annonces incluses : Big Buck Bunny © Blender Foundation (peach.blender.org) et Sintel © Blender Foundation (sintel.org), sous licence Creative Commons Attribution 3.0.");
         addButton("Importer mon catalogue JSON", this::importCatalogue);
         if (catalogue.bySeries.isEmpty()) return;
 
