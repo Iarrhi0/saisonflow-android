@@ -38,13 +38,6 @@ jobs:
         run: gradle --no-daemon --stacktrace :app:lintDebug :app:testDebugUnitTest :app:assembleDebug
       - name: Name the installable file
         run: cp app/build/outputs/apk/debug/app-debug.apk SaisonFlow.apk
-      - name: Upload test APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: SaisonFlow
-          path: SaisonFlow.apk
-          if-no-files-found: error
-          retention-days: 14
       - name: Upload diagnostic reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -74,3 +67,10 @@ jobs:
         with:
           name: SaisonFlow-accueil
           path: SaisonFlow-*.png
+      - name: Upload test APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: SaisonFlow
+          path: SaisonFlow.apk
+          if-no-files-found: error
+          retention-days: 14
