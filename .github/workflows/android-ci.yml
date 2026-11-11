@@ -58,7 +58,7 @@ jobs:
           profile: pixel_2
           script: |
             adb install SaisonFlow.apk
-            adb shell am start -W -n com.saisonflow.app/.MainActivity
+            adb shell am start -W -n com.saisonflow.app/.LibraryHome
             sleep 3
             adb shell dumpsys activity activities | grep -E 'mResumedActivity.*com.saisonflow.app'
             adb exec-out screencap -p > SaisonFlow-accueil.png

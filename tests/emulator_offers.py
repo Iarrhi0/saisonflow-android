@@ -24,14 +24,14 @@ def find(label, tap=False):
     raise RuntimeError("Contrôle absent : " + label)
 
 
-find("Miruro", True)
+find("ONE PIECE", True)
 find("Aucune source téléchargeable autorisée disponible actuellement.")
 adb("shell", "input", "keyevent", "4")
-find("Bandes-annonces Blender · Démonstration", True)
+find("Cinéma Blender", True)
 find("Télécharger")
 Path("SaisonFlow-fiche.png").write_bytes(adb("exec-out", "screencap", "-p"))
 find("Télécharger", True)
 find("Ajouter à la file")
 Path("SaisonFlow-selection.png").write_bytes(adb("exec-out", "screencap", "-p"))
 find("Ajouter à la file", True)
-find("2 sur 2 ajouté(s) à la file")
+find("3 sur 3 ajouté(s) à la file")
