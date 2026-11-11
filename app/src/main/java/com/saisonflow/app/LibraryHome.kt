@@ -39,11 +39,22 @@ class LibraryHome : ComponentActivity() {
             MaterialTheme(colorScheme = darkColorScheme(primary = orange, background = navy, surface = panel)) {
                 var query by rememberSaveable { mutableStateOf("") }
                 var tab by rememberSaveable { mutableStateOf("Accueil") }
-                val catalog by produceState<List<Title>>(emptyList()) {
+                var revision by remember { mutableIntStateOf(0) }
+                val scope = rememberCoroutineScope()
+                var importStatus by remember { mutableStateOf("") }
+                val importCatalog = androidx.activity.compose.rememberLauncherForActivityResult(
+                    androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
+                    if (uri != null) scope.launch {
+                        importStatus = runCatching { withContext(Dispatchers.IO) { MediaCatalogs(this@LibraryHome).importAuthorized(uri) }; revision++; "Catalogue ajouté" }
+                            .getOrElse { "Import impossible : " + it.localizedMessage }
+                    }
+                }
+                val catalog by produceState<List<Title>>(emptyList(),revision) {
                     value = withContext(Dispatchers.IO) {
                         val json = assets.open("animes.json").bufferedReader().use { JSONArray(it.readText()) }
                         buildList {
                             add(Title(collection, "Collection libre · Démonstration", true))
+                            MediaCatalogs(this@LibraryHome).providers().flatMap { it.series().keys }.distinct().filter { it != collection }.forEach { add(Title(it,"Catalogue autorisé",true)) }
                             repeat(json.length()) { add(Title(json.getJSONObject(it).getString("title"), "Index animé")) }
                             GZIPInputStream(assets.open("french-stream.tsv.gz")).bufferedReader().useLines { lines ->
                                 lines.forEach { add(Title(it.substringAfter('-').removeSuffix(".html").replace('-', ' '), "Index French Stream")) }
@@ -65,6 +76,8 @@ class LibraryHome : ComponentActivity() {
                             Text("Flow", style = MaterialTheme.typography.headlineMedium, color = orange, fontWeight = FontWeight.Bold)
                         }
                         if (tab == "Bibliothèque") {
+                            TextButton(onClick = { importCatalog.launch(arrayOf("application/json", "text/plain")) }) { Text("Importer mon catalogue autorisé") }
+                            if (importStatus.isNotBlank()) Text(importStatus)
                             Library()
                         } else {
                             OutlinedTextField(query, { query = it; tab = "Recherche" }, singleLine = true,
@@ -73,7 +86,7 @@ class LibraryHome : ComponentActivity() {
                                 value = withContext(Dispatchers.Default) {
                                     val term = query.trim()
                                     if (term.isEmpty()) catalog.filter { it.demo || MainActivity.cover(it.name) != 0 }
-                                    else catalog.asSequence().filter { it.name.contains(term, true) || (it.demo && ("Big Buck Bunny Sintel").contains(term,true)) }
+                                    else catalog.asSequence().filter { it.name.contains(term, true) || (it.name == collection && ("Big Buck Bunny Sintel").contains(term,true)) }
                                         .distinctBy { it.name.lowercase() }.take(100).toList()
                                 }
                             }
