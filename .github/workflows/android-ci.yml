@@ -4,7 +4,6 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -36,16 +35,9 @@ jobs:
       - name: Run core regression tests
         run: bash tests/run-core-tests.sh
       - name: Check Android and compile debug APK
-        run: gradle --no-daemon --stacktrace :app:lintDebug :app:testDebugUnitTest :app:assembleDebug
+        run: gradle --no-daemon --stacktrace :app:lintDebug :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest
       - name: Name the installable file
         run: cp app/build/outputs/apk/debug/app-debug.apk SaisonFlow.apk
-      - name: Upload test APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: SaisonFlow
-          path: SaisonFlow.apk
-          if-no-files-found: error
-          retention-days: 14
       - name: Upload diagnostic reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -70,7 +62,18 @@ jobs:
             sleep 3
             adb shell dumpsys activity activities | grep -E 'mResumedActivity.*com.saisonflow.app'
             adb exec-out screencap -p > SaisonFlow-accueil.png
+            python3 tests/emulator_offers.py
+            adb install app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+            adb shell am instrument -w com.saisonflow.app.test/androidx.test.runner.AndroidJUnitRunner | tee instrument.txt
+            grep -F "OK (1 test)" instrument.txt
       - uses: actions/upload-artifact@v4
         with:
           name: SaisonFlow-accueil
-          path: SaisonFlow-accueil.png
+          path: SaisonFlow-*.png
+      - name: Upload test APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: SaisonFlow
+          path: SaisonFlow.apk
+          if-no-files-found: error
+          retention-days: 14
