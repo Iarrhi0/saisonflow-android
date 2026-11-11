@@ -18,7 +18,7 @@
 
 ## Ce qui n'est PAS encore intégré
 
-**Pas d'APK compilé vérifié dans cette livraison.** Pas de test sur émulateur/téléphone. La construction GitHub Actions est prévue mais pas encore exécutée.
+**Compilation debug vérifiée dans GitHub Actions le 11 novembre 2026**, avec 19 assertions Java et Android Lint réussis : [exécution de validation](https://github.com/Iarrhi0/saisonflow-android/actions/runs/43012589788). Pas de test sur émulateur/téléphone ; une compilation réussie ne valide pas encore le fonctionnement sur appareil.
 
 - Pas de téléchargement segmenté/multithread au sein de l'app comme 1DM (la concurrence du DownloadManager est déterminée par Android).
 - Pas de boutons pause/reprise manuels (Android peut suspendre/reprendre selon réseau, mais l'API DownloadManager ne fournit pas de pause manuelle).
@@ -133,9 +133,10 @@ SaisonFlow_GitHub/
 
 ## Tests exécutés pendant la préparation
 
-- `bash tests/run-core-tests.sh` : **13 assertions réussies** (qualité réelle, Auto, schémas de liens, validation fichiers directs).
+- `bash tests/run-core-tests.sh` : **19 assertions réussies** (qualité réelle, Auto, repli après URL invalide, schémas de liens, validation fichiers directs).
 - Vérification de syntaxe XML pour AndroidManifest/styles et du JSON catalogue : **réussie**.
-- Compilation Android / lancement sur un téléphone : **non effectués** (SDK Android non disponible ici).
+- Android Lint et `assembleDebug` : **réussis sur GitHub Actions**. La tâche `testDebugUnitTest` indique `NO-SOURCE` ; les 19 assertions sont exécutées séparément par le script Java.
+- Lancement sur un téléphone ou émulateur : **non effectué**.
 
 ## Limites et droits
 

@@ -73,7 +73,7 @@ Documentation officielle Android :
 
 ## Critères d'acceptation avant annonce « APK prête »
 
-1. GitHub Actions `Android debug APK` termine `success`.
+1. GitHub Actions `Android CI` termine `success` et publie l'artifact `SaisonFlow-debug-apk`.
 2. Tests manuels sur Android 10, 13, 15 : import catalogue, qualité, lot, fichier unique, notifications, absence de permission stockage excessive.
 3. Le système n'étiquette jamais un fichier 720p comme 480p simplement parce que l'utilisateur a choisi 480p.
 4. Épisode sans URL compatible : erreur explicite sans faux téléchargement.
