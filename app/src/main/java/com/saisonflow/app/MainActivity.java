@@ -377,7 +377,7 @@ public final class MainActivity extends Activity {
     private void addButton(String label, Runnable task) { Button b = button(label, task); b.setAllCaps(false); body.addView(b); }
     private TextView text(String value, int sp, int color, boolean bold) {
         TextView v = new TextView(this); v.setText(value); v.setTextSize(sp); v.setTextColor(color);
-        if (bold) v.setTypeface(null,1); return v;
+        if (bold) v.setTypeface(null, android.graphics.Typeface.BOLD); return v;
     }
     private void addText(LinearLayout parent, String value, int sp, int color, boolean bold) {
         TextView t = text(value,sp,color,bold); t.setPadding(0,dp(4),0,dp(5)); parent.addView(t);
