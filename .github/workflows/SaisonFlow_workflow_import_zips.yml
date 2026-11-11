@@ -1,0 +1,119 @@
+name: SaisonFlow - Importer les ZIP
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'incoming/**/*.zip'
+      - 'incoming/*.zip'
+      - '.github/workflows/import-zips.yml'
+      - 'tools/import_archives.py'
+      - 'tests/test_import_archives.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: saisonflow-import-main
+  cancel-in-progress: false
+
+jobs:
+  verifier:
+    name: Verifier les archives et compiler AVANT publication
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.import.outputs.changed }}
+      source_changed: ${{ steps.import.outputs.source_changed }}
+    steps:
+      - name: Recuperer main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Tester la securite de l'importateur
+        run: python3 -m unittest discover -s tests -p test_import_archives.py -v
+
+      - name: Extraire les ZIP dans une copie de travail
+        id: import
+        shell: bash
+        run: |
+          python3 tools/import_archives.py --report /tmp/saisonflow-import-report.json
+          python3 - <<'PY'
+          import json, os
+          r = json.load(open('/tmp/saisonflow-import-report.json', encoding='utf-8'))
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as out:
+              out.write(f"changed={str(r['changed']).lower()}\n")
+              out.write(f"source_changed={str(r['source_changed']).lower()}\n")
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as out:
+              out.write('## Import des archives\n\n')
+              for a in r['archives']:
+                  out.write(f"- `{a['zip']}` : **{a['status']}**\n")
+          PY
+
+      - name: Installer Java 17
+        if: steps.import.outputs.source_changed == 'true'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Installer le SDK Android
+        if: steps.import.outputs.source_changed == 'true'
+        uses: android-actions/setup-android@v3
+
+      - name: Installer les SDK Android recents
+        if: steps.import.outputs.source_changed == 'true'
+        run: sdkmanager 'platforms;android-35' 'platforms;android-36' 'build-tools;35.0.0'
+
+      - name: Configurer Gradle
+        if: steps.import.outputs.source_changed == 'true'
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Tester et compiler les modifications (sans les publier encore)
+        if: steps.import.outputs.source_changed == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f settings.gradle -o -f settings.gradle.kts || { echo '::error::Le projet Android complet manque (settings.gradle)'; exit 1; }
+          if test -f tests/run-core-tests.sh; then bash tests/run-core-tests.sh; fi
+          if test -f gradlew; then
+            chmod +x gradlew
+            ./gradlew --no-daemon :app:testDebugUnitTest :app:assembleDebug
+          else
+            gradle --no-daemon :app:testDebugUnitTest :app:assembleDebug
+          fi
+          test -n "$(find app/build/outputs/apk -name '*debug*.apk' -type f -print -quit)" || { echo '::error::APK absente'; exit 1; }
+
+  publier:
+    name: Appliquer les archives validees sur main
+    needs: verifier
+    if: needs.verifier.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Recuperer main apres validation
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: true
+
+      - name: Rejouer l'import sans executer de code de l'archive
+        run: python3 tools/import_archives.py --report /tmp/saisonflow-import-final.json
+
+      - name: Sauvegarder les fichiers importes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          if git diff --cached --quiet; then
+            echo 'Aucun nouveau fichier : rien a publier.'
+          else
+            git commit -m 'ci(import): integrer ZIP valides dans main'
+            git push origin HEAD:main
+          fi
