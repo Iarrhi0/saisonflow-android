@@ -9,6 +9,8 @@ on:
       - '.github/workflows/import-zips.yml'
       - 'tools/import_archives.py'
       - 'tests/test_import_archives.py'
+      - 'SaisonFlow_AUTOMAIN_GITHUB.zip'
+      - 'SaisonFlow_AUTOMAIN_GITHUB (1).zip'
   workflow_dispatch:
 
 permissions:
@@ -23,13 +25,56 @@ jobs:
     name: Verifier les archives et compiler AVANT publication
     runs-on: ubuntu-latest
     outputs:
-      changed: ${{ steps.import.outputs.changed }}
+      changed: ${{ steps.import.outputs.changed == 'true' || steps.bootstrap.outputs.bootstrap_changed == 'true' }}
       source_changed: ${{ steps.import.outputs.source_changed }}
     steps:
       - name: Recuperer main
         uses: actions/checkout@v4
         with:
           ref: main
+
+      - name: Installer les scripts AutoMain depuis le ZIP initial si absents
+        id: bootstrap
+        shell: bash
+        run: |
+          python3 - <<'PY_BOOT'
+          import os
+          from pathlib import Path
+          from zipfile import ZipFile
+          
+          required = (
+              'tools/import_archives.py',
+              'tests/test_import_archives.py',
+              'automation/imported-archives.json',
+          )
+          missing = [p for p in required if not Path(p).is_file()]
+          changed = False
+          if missing:
+              kits = [Path('SaisonFlow_AUTOMAIN_GITHUB.zip'),
+                      Path('SaisonFlow_AUTOMAIN_GITHUB (1).zip')]
+              kit = next((p for p in kits if p.is_file()), None)
+              if kit is None:
+                  raise SystemExit(
+                      '::error::Les fichiers tools/ et tests/ sont absents. '
+                      'Ajoute SaisonFlow_AUTOMAIN_GITHUB.zip a la racine de main, '
+                      'puis relance ce workflow (Run workflow).'
+                  )
+              with ZipFile(kit) as z:
+                  for name in missing:
+                      try:
+                          info = z.getinfo(name)
+                      except KeyError:
+                          raise SystemExit(f'::error::{kit.name} ne contient pas {name}')
+                      if info.file_size > 1024 * 1024 or info.is_dir():
+                          raise SystemExit(f'::error::Fichier inattendu dans le kit: {name}')
+                      path = Path(name)
+                      path.parent.mkdir(parents=True, exist_ok=True)
+                      path.write_bytes(z.read(info))
+                      changed = True
+                      print(f'Installe: {name}')
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as out:
+              out.write(f'bootstrap_changed={str(changed).lower()}\n')
+          PY_BOOT
 
       - name: Tester la securite de l'importateur
         run: python3 -m unittest discover -s tests -p test_import_archives.py -v
@@ -100,6 +145,48 @@ jobs:
         with:
           ref: main
           persist-credentials: true
+
+      - name: Installer les scripts AutoMain depuis le ZIP initial si absents
+        shell: bash
+        run: |
+          python3 - <<'PY_BOOT'
+          import os
+          from pathlib import Path
+          from zipfile import ZipFile
+          
+          required = (
+              'tools/import_archives.py',
+              'tests/test_import_archives.py',
+              'automation/imported-archives.json',
+          )
+          missing = [p for p in required if not Path(p).is_file()]
+          changed = False
+          if missing:
+              kits = [Path('SaisonFlow_AUTOMAIN_GITHUB.zip'),
+                      Path('SaisonFlow_AUTOMAIN_GITHUB (1).zip')]
+              kit = next((p for p in kits if p.is_file()), None)
+              if kit is None:
+                  raise SystemExit(
+                      '::error::Les fichiers tools/ et tests/ sont absents. '
+                      'Ajoute SaisonFlow_AUTOMAIN_GITHUB.zip a la racine de main, '
+                      'puis relance ce workflow (Run workflow).'
+                  )
+              with ZipFile(kit) as z:
+                  for name in missing:
+                      try:
+                          info = z.getinfo(name)
+                      except KeyError:
+                          raise SystemExit(f'::error::{kit.name} ne contient pas {name}')
+                      if info.file_size > 1024 * 1024 or info.is_dir():
+                          raise SystemExit(f'::error::Fichier inattendu dans le kit: {name}')
+                      path = Path(name)
+                      path.parent.mkdir(parents=True, exist_ok=True)
+                      path.write_bytes(z.read(info))
+                      changed = True
+                      print(f'Installe: {name}')
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as out:
+              out.write(f'bootstrap_changed={str(changed).lower()}\n')
+          PY_BOOT
 
       - name: Rejouer l'import sans executer de code de l'archive
         run: python3 tools/import_archives.py --report /tmp/saisonflow-import-final.json
