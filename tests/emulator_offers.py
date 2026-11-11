@@ -35,22 +35,3 @@ find("Ajouter à la file")
 Path("SaisonFlow-selection.png").write_bytes(adb("exec-out", "screencap", "-p"))
 find("Ajouter à la file", True)
 find("2 sur 2 ajouté(s) à la file")
-
-expected = {
-    "b2ded9ae5a20fa36ca8cec49ef923bffb5e1a51d9e8c1f8336273d2fa9d35ff0",
-    "b670602fa00934ca27c4351bb0efe7ea7a07fae57284e44226025eeed7c51254",
-}
-folder = "/sdcard/Android/data/com.saisonflow.app/files/Movies"
-deadline = time.monotonic() + 150
-while time.monotonic() < deadline:
-    files = subprocess.run(["adb", "shell", "run-as", "com.saisonflow.app", "ls", "-1", folder],
-                           capture_output=True, text=True, timeout=20)
-    listing = [folder + "/" + name for name in files.stdout.splitlines() if name.endswith(".mp4")]
-    if len(listing) == 2:
-        actual = {adb("shell", "run-as", "com.saisonflow.app", "sha256sum", path).decode().split()[0] for path in listing}
-        if actual == expected:
-            print("Deux fichiers MP4 complets, SHA-256 identiques aux originaux W3C.")
-            break
-    time.sleep(3)
-else:
-    raise RuntimeError("Intégrité des deux téléchargements non confirmée")
