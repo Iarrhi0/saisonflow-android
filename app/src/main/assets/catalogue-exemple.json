@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "series": [
+    {
+      "title": "Ma série autorisée (exemple)",
+      "seasons": [
+        {
+          "number": 1,
+          "episodes": [
+            {
+              "number": 1,
+              "title": "Episode 1 - Exemple",
+              "qualities": { "360p": "", "480p": "" }
+            },
+            {
+              "number": 2,
+              "title": "Episode 2 - Exemple",
+              "qualities": { "360p": "", "480p": "" }
+            },
+            {
+              "number": 3,
+              "title": "Episode 3 - Exemple",
+              "qualities": { "360p": "", "480p": "" }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
