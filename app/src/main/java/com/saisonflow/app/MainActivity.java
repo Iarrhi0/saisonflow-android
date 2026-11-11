@@ -53,7 +53,7 @@ public final class MainActivity extends Activity {
     private DownloadStore store;
     private DownloadEngine engine;
     private LinearLayout body;
-    private String tab = "Sources";
+    private String tab = "Accueil";
     private String linkUrl = "";
     private String linkTitle = "";
     private boolean wifiOnly = false;
@@ -103,7 +103,7 @@ public final class MainActivity extends Activity {
         LinearLayout tabs = new LinearLayout(this);
         tabs.setOrientation(LinearLayout.HORIZONTAL);
         tabs.setPadding(0, dp(12), 0, dp(8));
-        for (String name : new String[]{"Sources", "Catalogue", "Lien", "Téléchargés", "Réglages"}) {
+        for (String name : new String[]{"Accueil", "Catalogue", "Lien", "Téléchargés", "Réglages"}) {
             Button b = button(name, () -> { tab = name; render(); });
             b.setTextSize(10);
             b.setAllCaps(false);
@@ -123,7 +123,7 @@ public final class MainActivity extends Activity {
         outer.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1f));
         setContentView(outer);
         switch(tab) {
-            case "Sources": renderSources(); break;
+            case "Accueil": renderSources(); break;
             case "Catalogue": renderCatalogue(); break;
             case "Lien": renderLink(); break;
             case "Téléchargés": renderHistory(); break;
@@ -132,7 +132,39 @@ public final class MainActivity extends Activity {
     }
 
     private void renderSources() {
-        addHeading("Choisir un catalogue");
+        addHeading("Explorer les animés");
+        EditText search = edit("", "Rechercher un animé", false);
+        body.addView(search);
+        LinearLayout matches = new LinearLayout(this);
+        matches.setOrientation(LinearLayout.VERTICAL);
+        body.addView(matches);
+        try (InputStream in = getAssets().open("animes.json")) {
+            org.json.JSONArray titles = new org.json.JSONArray(readText(in));
+            Runnable filter = () -> {
+                matches.removeAllViews();
+                String query = search.getText().toString().trim().toLowerCase(Locale.ROOT);
+                for (int i = 0; i < titles.length(); i++) {
+                    org.json.JSONObject item = titles.optJSONObject(i);
+                    String title = item.optString("title");
+                    if (title.toLowerCase(Locale.ROOT).contains(query)) {
+                        matches.addView(button(title, () -> openSource(item.optString("url"))));
+                    }
+                    if (query.isEmpty() && matches.getChildCount() == 6) break;
+                }
+                if (matches.getChildCount() == 0) matches.addView(text("Aucun titre correspondant", 14, SECONDARY, false));
+            };
+            search.addTextChangedListener(new android.text.TextWatcher() {
+                public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+                public void onTextChanged(CharSequence s, int start, int before, int count) { filter.run(); }
+                public void afterTextChanged(android.text.Editable s) {}
+            });
+            filter.run();
+            addButton("Tous les animés Miruro", () -> openSource("https://www.miruro.tv/trending"));
+        } catch (Exception e) { addNote("Index local indisponible"); }
+        addHeading("Catalogues");
+        addButton("FRAnime", () -> openSource("https://franime.fr/"));
+        addButton("Anime-Sama via Flixnet", () -> openSource("https://flixnet.site/animesama/"));
+        addButton("Kibo", () -> openSource("https://www.kiboanime.app/"));
         addButton("Aniwave · Miruro", () -> openSource("https://www.miruro.tv/"));
         addButton("French Stream", () -> openSource("https://fss.lol/"));
         addButton("MovieBox", () -> openSource("https://officialmoviebox.com/"));
