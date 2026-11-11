@@ -43,9 +43,11 @@ expected = {
 folder = "/sdcard/Android/data/com.saisonflow.app/files/Movies"
 deadline = time.monotonic() + 150
 while time.monotonic() < deadline:
-    listing = adb("shell", "find", folder, "-name", "*.mp4").decode().splitlines()
+    files = subprocess.run(["adb", "shell", "run-as", "com.saisonflow.app", "ls", "-1", folder],
+                           capture_output=True, text=True, timeout=20)
+    listing = [folder + "/" + name for name in files.stdout.splitlines() if name.endswith(".mp4")]
     if len(listing) == 2:
-        actual = {adb("shell", "sha256sum", path).decode().split()[0] for path in listing}
+        actual = {adb("shell", "run-as", "com.saisonflow.app", "sha256sum", path).decode().split()[0] for path in listing}
         if actual == expected:
             print("Deux fichiers MP4 complets, SHA-256 identiques aux originaux W3C.")
             break
