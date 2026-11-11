@@ -60,7 +60,7 @@ public final class MainActivity extends Activity {
     private int historyPage = 0;
     private String seriesName = null;
     private int seasonNumber = 1;
-    private String wantedQuality = "480p";
+    private String wantedQuality = "Auto";
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
@@ -132,7 +132,7 @@ public final class MainActivity extends Activity {
 
     private void renderCatalogue() {
         addHeading("Séries et saisons");
-        addNote("Importe ton propre catalogue JSON de vidéos autorisées. L'exemple inclus contient des URL vides : il ne télécharge aucun contenu par défaut.");
+        addNote("Films inclus : Big Buck Bunny © Blender Foundation (peach.blender.org) et Sintel © Blender Foundation (sintel.org), sous licence Creative Commons Attribution 3.0.");
         addButton("Importer mon catalogue JSON", this::importCatalogue);
         if (catalogue.bySeries.isEmpty()) return;
 
@@ -188,6 +188,11 @@ public final class MainActivity extends Activity {
                 }
             }
             addText(card, any ? available : "Aucun lien vidéo direct configuré", 12, SECONDARY, false);
+            card.addView(button("Regarder", () -> {
+                String source = QualitySelector.select(episode.qualities, wantedQuality);
+                if (source == null) { toast("Qualité indisponible."); return; }
+                playVideo(Uri.parse(source), episode.title);
+            }));
             Button one = button("Télécharger cet épisode", () -> queueEpisodes(java.util.Collections.singletonList(episode), wantedQuality));
             one.setTextSize(12);
             card.addView(one);
@@ -322,11 +327,25 @@ public final class MainActivity extends Activity {
     private void openCompleted(long id) {
         Uri uri = engine.system().getUriForDownloadedFile(id);
         if (uri == null) { toast("Fichier non trouvé."); return; }
-        Intent play = new Intent(Intent.ACTION_VIEW);
-        play.setDataAndType(uri, "video/*");
-        play.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-        try { startActivity(Intent.createChooser(play, "Lire la vidéo")); }
-        catch(Exception ex) { alert("Lecture indisponible", "Aucun lecteur compatible installé."); }
+        playVideo(uri, "Lecture hors connexion");
+    }
+
+    private void playVideo(Uri uri, String title) {
+        android.widget.VideoView video = new android.widget.VideoView(this);
+        android.widget.MediaController controls = new android.widget.MediaController(this);
+        video.setMediaController(controls);
+        controls.setAnchorView(video);
+        AlertDialog player = new AlertDialog.Builder(this).setTitle(title).setView(video)
+                .setNegativeButton("Fermer", null).create();
+        player.setOnDismissListener(dialog -> video.stopPlayback());
+        video.setOnErrorListener((media, what, extra) -> {
+            player.dismiss();
+            alert("Lecture impossible", "Vérifie la connexion ou la disponibilité du fichier.");
+            return true;
+        });
+        player.show();
+        video.setVideoURI(uri);
+        video.start();
     }
 
     private void renderSettings() {
