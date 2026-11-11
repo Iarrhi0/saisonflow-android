@@ -1,1 +1,36 @@
-{"version":1,"series":[{"title":"Bandes-annonces Blender","seasons":[{"number":1,"episodes":[{"number":1,"title":"Big Buck Bunny","qualities":{"original":"https://media.w3.org/2010/05/bunny/trailer.mp4"}},{"number":2,"title":"Sintel","qualities":{"original":"https://media.w3.org/2010/05/sintel/trailer.mp4"}}]}]}]}
+{
+  "version": 1,
+  "series": [
+    {
+      "title": "Cinéma Blender",
+      "seasons": [
+        {
+          "number": 1,
+          "episodes": [
+            {
+              "number": 1,
+              "title": "Big Buck Bunny",
+              "qualities": {
+                "original": "https://media.w3.org/2010/05/bunny/trailer.mp4"
+              }
+            },
+            {
+              "number": 2,
+              "title": "Sintel",
+              "qualities": {
+                "original": "https://media.w3.org/2010/05/sintel/trailer.mp4"
+              }
+            },
+            {
+              "title": "Big Buck Bunny · film complet",
+              "number": 3,
+              "qualities": {
+                "original": "https://media.w3.org/2010/05/bunny/movie.mp4"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

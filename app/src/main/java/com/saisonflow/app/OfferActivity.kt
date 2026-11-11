@@ -54,7 +54,7 @@ class OfferActivity : ComponentActivity() {
                         if (busy) Text("Vérification des fichiers…")
                         else if (verified.isEmpty()) Text("Aucune source téléchargeable autorisée disponible actuellement.")
                         else {
-                            Text("Collection de démonstration", style = MaterialTheme.typography.titleLarge)
+                            Text("Saison 1 · collection de démonstration", style = MaterialTheme.typography.titleLarge)
                             verified.forEach { Text(it.title) }
                             Button(onClick = { sheet = true }, enabled = verified.any { it.number !in queued }) { Text("Télécharger") }
                         }
@@ -66,6 +66,7 @@ class OfferActivity : ComponentActivity() {
                         Text("Télécharger la sélection", style = MaterialTheme.typography.headlineSmall)
                         Text("MP4 original · résolution et langue non renseignées")
                         var selected by remember { mutableStateOf(verified.map { it.number }.filter { it !in queued }.toSet()) }
+                        TextButton(onClick = { selected = verified.filter { it.number !in queued }.map { it.number }.toSet() }) { Text("Toute la saison") }
                         verified.forEach { episode ->
                             Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                                 Checkbox(episode.number in selected, enabled = episode.number !in queued,

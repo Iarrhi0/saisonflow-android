@@ -71,6 +71,8 @@ public final class MainActivity extends Activity {
         try(InputStream in = getAssets().open("catalogue-exemple.json")) {
             catalogue = Catalogue.parse(readText(in));
         } catch(Exception e) { catalogue = new Catalogue(); }
+        if ("Lien".equals(getIntent().getStringExtra("section"))) tab = "Lien";
+        if ("Téléchargés".equals(getIntent().getStringExtra("section"))) tab = "Téléchargés";
         acceptIntent(getIntent());
         render();
     }
@@ -587,7 +589,7 @@ public final class MainActivity extends Activity {
     private void addText(LinearLayout parent, String value, int sp, int color, boolean bold) {
         TextView t = text(value,sp,color,bold); t.setPadding(0,dp(4),0,dp(5)); parent.addView(t);
     }
-    private int cover(String title) {
+    static int cover(String title) {
         switch (title.toLowerCase(Locale.ROOT)) {
             case "naruto": return R.drawable.cover_naruto;
             case "naruto: shippuden": return R.drawable.cover_shippuden;
