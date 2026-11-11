@@ -43,11 +43,11 @@ import java.util.Map;
 public final class MainActivity extends Activity {
     private static final int IMPORT_JSON = 108;
     private static final int PAGE_SIZE = 40;
-    private static final int BG = Color.rgb(17,22,28);
-    private static final int PANEL = Color.rgb(30,39,47);
+    private static final int BG = Color.rgb(11,16,29);
+    private static final int PANEL = Color.rgb(28,36,55);
     private static final int FG = Color.rgb(237,244,246);
     private static final int SECONDARY = Color.rgb(169,185,190);
-    private static final int ACCENT = Color.rgb(90,200,167);
+    private static final int ACCENT = Color.rgb(255,133,31);
 
     private Catalogue catalogue;
     private DownloadStore store;
@@ -97,8 +97,17 @@ public final class MainActivity extends Activity {
         outer.setOrientation(LinearLayout.VERTICAL);
         outer.setPadding(dp(12), dp(15), dp(12), dp(8));
         outer.setBackgroundColor(BG);
-        outer.addView(text("SAISONFLOW", 25, ACCENT, true));
-        outer.addView(text("Lecteur et téléchargements — projet indépendant", 12, SECONDARY, false));
+        TextView brand = text("  SaisonFlow", 31, FG, true);
+        android.text.SpannableString name = new android.text.SpannableString(brand.getText());
+        name.setSpan(new android.text.style.ForegroundColorSpan(ACCENT), 8, name.length(), 0);
+        brand.setText(name);
+        brand.setGravity(Gravity.CENTER);
+        android.graphics.drawable.Drawable mark = getDrawable(R.drawable.flow_mark);
+        mark.setBounds(0, 0, dp(36), dp(36));
+        LinearLayout logo = new LinearLayout(this);
+        logo.setGravity(Gravity.CENTER);
+        brand.setCompoundDrawables(mark, null, null, null);
+        logo.addView(brand); outer.addView(logo);
 
         LinearLayout tabs = new LinearLayout(this);
         tabs.setOrientation(LinearLayout.HORIZONTAL);
@@ -113,7 +122,7 @@ public final class MainActivity extends Activity {
             lp.setMargins(dp(2), 0, dp(2), 0);
             tabs.addView(b, lp);
         }
-        outer.addView(tabs);
+
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
         body = new LinearLayout(this);
@@ -121,6 +130,8 @@ public final class MainActivity extends Activity {
         body.setPadding(dp(3), dp(2), dp(3), dp(20));
         scroll.addView(body);
         outer.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1f));
+        outer.addView(tabs);
+        outer.setFitsSystemWindows(true);
         setContentView(outer);
         switch(tab) {
             case "Accueil": renderSources(); break;
@@ -132,9 +143,13 @@ public final class MainActivity extends Activity {
     }
 
     private void renderSources() {
-        addHeading("Explorer les animés");
+
         EditText search = edit("", "Rechercher un animé", false);
+        search.setSingleLine(true);
+        search.setPadding(dp(16),dp(10),dp(16),dp(10));
+        search.setBackground(surface(PANEL, ACCENT));
         body.addView(search);
+        addHeading("À découvrir");
         LinearLayout matches = new LinearLayout(this);
         matches.setOrientation(LinearLayout.VERTICAL);
         body.addView(matches);
@@ -172,9 +187,9 @@ public final class MainActivity extends Activity {
         for (int i = 0; i < titles.length(); i++) {
             org.json.JSONObject hit = titles.optJSONObject(i);
             String title = hit.optString("title");
-            if (title.toLowerCase(Locale.ROOT).contains(query))
+            if (title.toLowerCase(Locale.ROOT).contains(query) && (!query.isEmpty() || cover(title) != 0))
                 addHit(list, groups, title, "Miruro", hit.optString("url"));
-            if (query.isEmpty() && groups.size() == 6) break;
+            if (query.isEmpty() && groups.size() == 7) break;
         }
         if (query.length() < 2) return;
         debounce.postDelayed(() -> {
@@ -225,10 +240,26 @@ public final class MainActivity extends Activity {
         String key = title.trim().toLowerCase(Locale.ROOT);
         LinearLayout group = groups.get(key);
         if (group == null) {
-            group = card();
-            group.addView(text(title, 17, FG, true));
+            LinearLayout row = card();
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            int poster = cover(title);
+            if (poster != 0) {
+                android.widget.ImageView image = new android.widget.ImageView(this);
+                image.setScaleType(android.widget.ImageView.ScaleType.CENTER_CROP);
+                image.setImageResource(poster);
+                image.setBackground(surface(PANEL,PANEL));
+                image.setClipToOutline(true);
+                row.addView(image,new LinearLayout.LayoutParams(dp(92),dp(128)));
+            }
+            group = new LinearLayout(this);
+            group.setOrientation(LinearLayout.VERTICAL);
+            group.setPadding(dp(12),0,0,0);
+            row.addView(group,new LinearLayout.LayoutParams(0,-2,1));
+            group.addView(text(title, 21, FG, true));
+            list.addView(row);
             groups.put(key, group);
-            list.addView(group);
+
         }
         group.addView(button(provider, () -> openSource(url)));
     }
@@ -550,9 +581,25 @@ public final class MainActivity extends Activity {
     private void addText(LinearLayout parent, String value, int sp, int color, boolean bold) {
         TextView t = text(value,sp,color,bold); t.setPadding(0,dp(4),0,dp(5)); parent.addView(t);
     }
+    private int cover(String title) {
+        switch (title.toLowerCase(Locale.ROOT)) {
+            case "naruto": return R.drawable.cover_naruto;
+            case "naruto: shippuden": return R.drawable.cover_shippuden;
+            case "one piece": return R.drawable.cover_one_piece;
+            case "black clover": return R.drawable.cover_black_clover;
+            case "bleach": return R.drawable.cover_bleach;
+            case "hunter×hunter (2011)": return R.drawable.cover_hunter;
+            case "vinland saga": return R.drawable.cover_vinland;
+            default: return 0;
+        }
+    }
+    private android.graphics.drawable.GradientDrawable surface(int color, int border) {
+        android.graphics.drawable.GradientDrawable shape = new android.graphics.drawable.GradientDrawable();
+        shape.setColor(color); shape.setCornerRadius(dp(14)); shape.setStroke(dp(1),border); return shape;
+    }
     private LinearLayout card() {
         LinearLayout l = new LinearLayout(this); l.setOrientation(LinearLayout.VERTICAL);
-        l.setPadding(dp(12), dp(10), dp(12), dp(10)); l.setBackgroundColor(PANEL);
+        l.setPadding(dp(12), dp(10), dp(12), dp(10)); l.setBackground(surface(PANEL, Color.rgb(54,64,83)));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1,-2);
         lp.setMargins(0,dp(5),0,dp(8)); l.setLayoutParams(lp); return l;
     }
