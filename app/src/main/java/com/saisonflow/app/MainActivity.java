@@ -53,7 +53,7 @@ public final class MainActivity extends Activity {
     private DownloadStore store;
     private DownloadEngine engine;
     private LinearLayout body;
-    private String tab = "Catalogue";
+    private String tab = "Sources";
     private String linkUrl = "";
     private String linkTitle = "";
     private boolean wifiOnly = false;
@@ -103,7 +103,7 @@ public final class MainActivity extends Activity {
         LinearLayout tabs = new LinearLayout(this);
         tabs.setOrientation(LinearLayout.HORIZONTAL);
         tabs.setPadding(0, dp(12), 0, dp(8));
-        for (String name : new String[]{"Catalogue", "Lien", "Téléchargés", "Réglages"}) {
+        for (String name : new String[]{"Sources", "Catalogue", "Lien", "Téléchargés", "Réglages"}) {
             Button b = button(name, () -> { tab = name; render(); });
             b.setTextSize(10);
             b.setAllCaps(false);
@@ -123,11 +123,60 @@ public final class MainActivity extends Activity {
         outer.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1f));
         setContentView(outer);
         switch(tab) {
+            case "Sources": renderSources(); break;
             case "Catalogue": renderCatalogue(); break;
             case "Lien": renderLink(); break;
             case "Téléchargés": renderHistory(); break;
             default: renderSettings();
         }
+    }
+
+    private void renderSources() {
+        addHeading("Choisir un catalogue");
+        addButton("Aniwave · Miruro", () -> openSource("https://www.miruro.tv/"));
+        addButton("French Stream", () -> openSource("https://fss.lol/"));
+        addButton("MovieBox", () -> openSource("https://officialmoviebox.com/"));
+        addButton("Hanime · 18+", () -> openSource("https://hanime.tv/"));
+    }
+
+    @android.annotation.SuppressLint("SetJavaScriptEnabled")
+    private void openSource(String url) {
+        android.webkit.WebView web = new android.webkit.WebView(this);
+        web.getSettings().setAllowFileAccess(false);
+        web.getSettings().setAllowContentAccess(false);
+        web.getSettings().setJavaScriptEnabled(true);
+        web.getSettings().setDomStorageEnabled(true);
+        web.setWebChromeClient(new android.webkit.WebChromeClient());
+        web.setWebViewClient(new android.webkit.WebViewClient() {
+            @Override public boolean shouldOverrideUrlLoading(android.webkit.WebView view,
+                    android.webkit.WebResourceRequest request) {
+                return !"https".equals(request.getUrl().getScheme());
+            }
+        });
+        web.setDownloadListener((source, agent, disposition, type, size) -> {
+            if (!QualitySelector.isSupportedDirectVideo(source)) {
+                toast("Ce lien ne fournit pas de fichier vidéo direct."); return;
+            }
+            new AlertDialog.Builder(this).setTitle("Télécharger cette vidéo ?")
+                .setNegativeButton("Annuler", null).setPositiveButton("Télécharger", (dialog, button) -> {
+                    try { engine.enqueue(source, web.getTitle() == null ? "Vidéo" : web.getTitle(), "original", wifiOnly); toast("Ajouté aux téléchargements"); }
+                    catch (RuntimeException ex) { alert("Téléchargement impossible", ex.getMessage()); }
+                }).show();
+        });
+        android.app.Dialog window = new android.app.Dialog(this, android.R.style.Theme_Material_NoActionBar);
+        LinearLayout layout = new LinearLayout(this);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        layout.addView(button("Retour aux sources", window::dismiss));
+        layout.addView(web, new LinearLayout.LayoutParams(-1, 0, 1f));
+        window.setContentView(layout);
+        window.setOnKeyListener((dialog, key, event) -> {
+            if (key != android.view.KeyEvent.KEYCODE_BACK || !web.canGoBack()) return false;
+            if (event.getAction() == android.view.KeyEvent.ACTION_UP) web.goBack();
+            return true;
+        });
+        window.setOnDismissListener(dialog -> { web.stopLoading(); layout.removeView(web); web.destroy(); });
+        window.show();
+        web.loadUrl(url);
     }
 
     private void renderCatalogue() {
