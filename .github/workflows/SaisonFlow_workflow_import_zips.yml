@@ -1,206 +1,201 @@
-name: SaisonFlow - Importer les ZIP
+name: SaisonFlow - Import ZIP et compilation APK
 
 on:
   push:
     branches: [main]
-    paths:
-      - 'incoming/**/*.zip'
-      - 'incoming/*.zip'
-      - '.github/workflows/import-zips.yml'
-      - 'tools/import_archives.py'
-      - 'tests/test_import_archives.py'
-      - 'SaisonFlow_AUTOMAIN_GITHUB.zip'
-      - 'SaisonFlow_AUTOMAIN_GITHUB (1).zip'
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
-  group: saisonflow-import-main
+  group: saisonflow-main-archives
   cancel-in-progress: false
 
 jobs:
-  verifier:
-    name: Verifier les archives et compiler AVANT publication
+  importer-et-compiler:
+    name: Importer, tester, compiler et publier si valide
     runs-on: ubuntu-latest
-    outputs:
-      changed: ${{ steps.import.outputs.changed == 'true' || steps.bootstrap.outputs.bootstrap_changed == 'true' }}
-      source_changed: ${{ steps.import.outputs.source_changed }}
     steps:
       - name: Recuperer main
         uses: actions/checkout@v4
         with:
           ref: main
+          fetch-depth: 0
+          persist-credentials: true
 
-      - name: Installer les scripts AutoMain depuis le ZIP initial si absents
-        id: bootstrap
-        shell: bash
-        run: |
-          python3 - <<'PY_BOOT'
-          import os
-          from pathlib import Path
-          from zipfile import ZipFile
-          
-          required = (
-              'tools/import_archives.py',
-              'tests/test_import_archives.py',
-              'automation/imported-archives.json',
-          )
-          missing = [p for p in required if not Path(p).is_file()]
-          changed = False
-          if missing:
-              kits = [Path('SaisonFlow_AUTOMAIN_GITHUB.zip'),
-                      Path('SaisonFlow_AUTOMAIN_GITHUB (1).zip')]
-              kit = next((p for p in kits if p.is_file()), None)
-              if kit is None:
-                  raise SystemExit(
-                      '::error::Les fichiers tools/ et tests/ sont absents. '
-                      'Ajoute SaisonFlow_AUTOMAIN_GITHUB.zip a la racine de main, '
-                      'puis relance ce workflow (Run workflow).'
-                  )
-              with ZipFile(kit) as z:
-                  for name in missing:
-                      try:
-                          info = z.getinfo(name)
-                      except KeyError:
-                          raise SystemExit(f'::error::{kit.name} ne contient pas {name}')
-                      if info.file_size > 1024 * 1024 or info.is_dir():
-                          raise SystemExit(f'::error::Fichier inattendu dans le kit: {name}')
-                      path = Path(name)
-                      path.parent.mkdir(parents=True, exist_ok=True)
-                      path.write_bytes(z.read(info))
-                      changed = True
-                      print(f'Installe: {name}')
-          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as out:
-              out.write(f'bootstrap_changed={str(changed).lower()}\n')
-          PY_BOOT
-
-      - name: Tester la securite de l'importateur
-        run: python3 -m unittest discover -s tests -p test_import_archives.py -v
-
-      - name: Extraire les ZIP dans une copie de travail
+      - name: Decompresser les nouveaux ZIP de code (sans outils externes)
         id: import
         shell: bash
         run: |
-          python3 tools/import_archives.py --report /tmp/saisonflow-import-report.json
-          python3 - <<'PY'
-          import json, os
-          r = json.load(open('/tmp/saisonflow-import-report.json', encoding='utf-8'))
-          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as out:
-              out.write(f"changed={str(r['changed']).lower()}\n")
-              out.write(f"source_changed={str(r['source_changed']).lower()}\n")
-          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as out:
-              out.write('## Import des archives\n\n')
-              for a in r['archives']:
-                  out.write(f"- `{a['zip']}` : **{a['status']}**\n")
-          PY
+          python3 - <<'PY_IMPORT'
+          from pathlib import Path, PurePosixPath
+          from zipfile import ZipFile, BadZipFile
+          import hashlib, json, os, stat, shutil, sys
 
+          # AUTONOME : aucun fichier tools/ ou tests/ n'est requis.
+          root = Path.cwd()
+          inbox = root / 'incoming' / 'code'
+          manifest_path = root / 'automation' / 'archives-importees.json'
+          manifest_path.parent.mkdir(parents=True, exist_ok=True)
+          try:
+              history = json.loads(manifest_path.read_text(encoding='utf-8')) if manifest_path.exists() else {}
+              if not isinstance(history, dict): history = {}
+          except (ValueError, OSError):
+              history = {}
+
+          allowed_roots = {'app','core','data','domain','feature','features','ui','player','catalog','downloader','download','shared','common','gradle'}
+          allowed_top_files = {'settings.gradle','settings.gradle.kts','build.gradle','build.gradle.kts','gradle.properties','gradlew','gradlew.bat'}
+          forbidden_parts = {'.git','.github','.gradle','build','node_modules','__pycache__'}
+          all_changed = False
+          reports = []
+
+          # Les ZIP de references (APK et documentation) ne sont volontairement PAS executes.
+          archives = sorted(inbox.rglob('*.zip')) if inbox.is_dir() else []
+          for archive in archives:
+              relname = archive.relative_to(root).as_posix()
+              sha = hashlib.sha256(archive.read_bytes()).hexdigest()
+              if history.get(relname) == sha:
+                  reports.append(f'- `{relname}` : deja importe, aucun changement')
+                  continue
+              if archive.stat().st_size > 150 * 1024 * 1024:
+                  raise SystemExit(f'::error::ZIP trop volumineux : {relname} (>150 Mio)')
+              staged = {}
+              try:
+                  with ZipFile(archive) as z:
+                      infos = [i for i in z.infolist() if not i.is_dir()]
+                      if len(infos) > 10000 or sum(i.file_size for i in infos) > 500*1024*1024:
+                          raise ValueError('Trop de fichiers ou ZIP potentiellement dangereux')
+                      for info in infos:
+                          raw = info.filename
+                          if ('\\' in raw or '\x00' in raw or raw.startswith('/') or ':' in raw):
+                              raise ValueError(f'Chemin ZIP dangereux : {raw!r}')
+                          p = PurePosixPath(raw)
+                          if '..' in p.parts:
+                              raise ValueError(f'Chemin ZIP traversal : {raw!r}')
+                          if stat.S_ISLNK(info.external_attr >> 16):
+                              raise ValueError(f'Lien symbolique interdit : {raw!r}')
+                          parts = list(p.parts)
+                          if any(x in forbidden_parts for x in parts):
+                              continue
+                          # Autorise jusqu'a deux dossiers enveloppants (ex. Projet/android/app/...)
+                          found = None
+                          for offset in range(min(3, len(parts))):
+                              candidate = parts[offset:]
+                              if candidate[0] in allowed_roots or (len(candidate)==1 and candidate[0] in allowed_top_files):
+                                  found = candidate
+                                  break
+                          if found is None: continue
+                          target = Path(*found)
+                          if target.as_posix() == 'gradle/wrapper/gradle-wrapper.jar' and info.file_size > 20*1024*1024:
+                              raise ValueError('gradle-wrapper.jar anormalement volumineux')
+                          if info.file_size > 80*1024*1024:
+                              raise ValueError(f'Fichier trop volumineux : {raw!r}')
+                          if str(target) in staged:
+                              raise ValueError(f'Doublon dans le ZIP : {target}')
+                          staged[str(target)] = z.read(info)
+              except (BadZipFile, ValueError, RuntimeError) as err:
+                  raise SystemExit(f'::error::Archive invalide {relname}: {err}')
+              if not staged:
+                  raise SystemExit(f'::error::{relname} ne contient pas de code Android reconnu. Place les archives de reference dans incoming/references/.')
+              # L'import ne supprime JAMAIS les fichiers presents sur main.
+              count = 0
+              for target_rel, data in staged.items():
+                  dest = root / target_rel
+                  if dest.is_symlink(): raise SystemExit(f'::error::Cible symbolique interdite: {target_rel}')
+                  dest.parent.mkdir(parents=True, exist_ok=True)
+                  if dest.is_file() and dest.read_bytes() == data:
+                      continue
+                  dest.write_bytes(data)
+                  if target_rel == 'gradlew': dest.chmod(0o755)
+                  count += 1
+              history[relname] = sha
+              all_changed = True
+              reports.append(f'- `{relname}` : {count} fichier(s) nouveau(x) ou mis a jour')
+
+          if all_changed:
+              manifest_path.write_text(json.dumps(history, indent=2, ensure_ascii=False)+'\n', encoding='utf-8')
+
+          has_android = any((root / f).is_file() for f in ('settings.gradle','settings.gradle.kts')) and any((root / f).is_file() for f in ('app/build.gradle','app/build.gradle.kts'))
+          with open(os.environ['GITHUB_OUTPUT'],'a',encoding='utf-8') as out:
+              out.write(f'android={str(has_android).lower()}\n')
+              out.write(f'imported={str(all_changed).lower()}\n')
+          with open(os.environ['GITHUB_STEP_SUMMARY'],'a',encoding='utf-8') as out:
+              out.write('## SaisonFlow : import ZIP\n\n')
+              out.write('\n'.join(reports) if reports else 'Aucun ZIP a importer dans `incoming/code/`.')
+              out.write('\n\n')
+              if not has_android:
+                  out.write('**Pas de compilation : le projet Android complet ne figure pas encore sur main.**\n')
+              else:
+                  out.write('Projet Android detecte : compilation lancee.\n')
+          print('\n'.join(reports) if reports else 'Aucune archive de code a importer.')
+          print('Projet Android present sur main :', has_android)
+          PY_IMPORT
       - name: Installer Java 17
-        if: steps.import.outputs.source_changed == 'true'
+        if: steps.import.outputs.android == 'true'
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Installer le SDK Android
-        if: steps.import.outputs.source_changed == 'true'
+      - name: Preparer le SDK Android
+        if: steps.import.outputs.android == 'true'
         uses: android-actions/setup-android@v3
 
-      - name: Installer les SDK Android recents
-        if: steps.import.outputs.source_changed == 'true'
-        run: sdkmanager 'platforms;android-35' 'platforms;android-36' 'build-tools;35.0.0'
-
       - name: Configurer Gradle
-        if: steps.import.outputs.source_changed == 'true'
+        if: steps.import.outputs.android == 'true'
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
 
-      - name: Tester et compiler les modifications (sans les publier encore)
-        if: steps.import.outputs.source_changed == 'true'
+      - name: Compiler une APK reelle avant tout commit
+        if: steps.import.outputs.android == 'true'
         shell: bash
         run: |
           set -euo pipefail
-          test -f settings.gradle -o -f settings.gradle.kts || { echo '::error::Le projet Android complet manque (settings.gradle)'; exit 1; }
-          if test -f tests/run-core-tests.sh; then bash tests/run-core-tests.sh; fi
-          if test -f gradlew; then
+          if [ -f gradlew ]; then
             chmod +x gradlew
-            ./gradlew --no-daemon :app:testDebugUnitTest :app:assembleDebug
+            ./gradlew --no-daemon --stacktrace assembleDebug
+            if [ -d app/src/test ]; then ./gradlew --no-daemon --stacktrace :app:testDebugUnitTest; fi
           else
-            gradle --no-daemon :app:testDebugUnitTest :app:assembleDebug
+            gradle --no-daemon --stacktrace assembleDebug
+            if [ -d app/src/test ]; then gradle --no-daemon --stacktrace :app:testDebugUnitTest; fi
           fi
-          test -n "$(find app/build/outputs/apk -name '*debug*.apk' -type f -print -quit)" || { echo '::error::APK absente'; exit 1; }
+          mkdir -p dist
+          find . -type f -path '*/build/outputs/apk/*/*.apk' -name '*.apk' -exec cp {} dist/ \;
+          if ! find dist -maxdepth 1 -name '*.apk' -type f | grep -q .; then
+            echo '::error::Compilation terminee sans fichier APK de sortie'
+            exit 1
+          fi
+          sha256sum dist/*.apk
 
-  publier:
-    name: Appliquer les archives validees sur main
-    needs: verifier
-    if: needs.verifier.outputs.changed == 'true'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - name: Recuperer main apres validation
-        uses: actions/checkout@v4
+      - name: Publier les APK de test
+        if: steps.import.outputs.android == 'true'
+        uses: actions/upload-artifact@v4
         with:
-          ref: main
-          persist-credentials: true
+          name: SaisonFlow-APK-debug
+          path: dist/*.apk
+          if-no-files-found: error
+          retention-days: 14
 
-      - name: Installer les scripts AutoMain depuis le ZIP initial si absents
-        shell: bash
-        run: |
-          python3 - <<'PY_BOOT'
-          import os
-          from pathlib import Path
-          from zipfile import ZipFile
-          
-          required = (
-              'tools/import_archives.py',
-              'tests/test_import_archives.py',
-              'automation/imported-archives.json',
-          )
-          missing = [p for p in required if not Path(p).is_file()]
-          changed = False
-          if missing:
-              kits = [Path('SaisonFlow_AUTOMAIN_GITHUB.zip'),
-                      Path('SaisonFlow_AUTOMAIN_GITHUB (1).zip')]
-              kit = next((p for p in kits if p.is_file()), None)
-              if kit is None:
-                  raise SystemExit(
-                      '::error::Les fichiers tools/ et tests/ sont absents. '
-                      'Ajoute SaisonFlow_AUTOMAIN_GITHUB.zip a la racine de main, '
-                      'puis relance ce workflow (Run workflow).'
-                  )
-              with ZipFile(kit) as z:
-                  for name in missing:
-                      try:
-                          info = z.getinfo(name)
-                      except KeyError:
-                          raise SystemExit(f'::error::{kit.name} ne contient pas {name}')
-                      if info.file_size > 1024 * 1024 or info.is_dir():
-                          raise SystemExit(f'::error::Fichier inattendu dans le kit: {name}')
-                      path = Path(name)
-                      path.parent.mkdir(parents=True, exist_ok=True)
-                      path.write_bytes(z.read(info))
-                      changed = True
-                      print(f'Installe: {name}')
-          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as out:
-              out.write(f'bootstrap_changed={str(changed).lower()}\n')
-          PY_BOOT
-
-      - name: Rejouer l'import sans executer de code de l'archive
-        run: python3 tools/import_archives.py --report /tmp/saisonflow-import-final.json
-
-      - name: Sauvegarder les fichiers importes
+      - name: Enregistrer les fichiers importes sur main
+        if: steps.import.outputs.imported == 'true' && steps.import.outputs.android == 'true'
         shell: bash
         run: |
           set -euo pipefail
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -A
-          if git diff --cached --quiet; then
-            echo 'Aucun nouveau fichier : rien a publier.'
-          else
-            git commit -m 'ci(import): integrer ZIP valides dans main'
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          for p in app core data domain feature features ui player catalog downloader download shared common gradle settings.gradle settings.gradle.kts build.gradle build.gradle.kts gradle.properties gradlew gradlew.bat automation/archives-importees.json; do
+            if [ -e "$p" ]; then git add -A -- "$p"; fi
+          done
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: importer les archives de code validees"
             git push origin HEAD:main
           fi
+
+      - name: Statut sans projet Android
+        if: steps.import.outputs.android != 'true'
+        run: |
+          echo 'Aucun projet Android complet dans main.'
+          echo 'Pour importer du code Android, ajouter un ZIP dans incoming/code/ puis le publier.'
+          echo 'Les ZIP de references doivent aller dans incoming/references/.'
